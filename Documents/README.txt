@@ -1,1 +1,1 @@
-This repo(folder) will contain all our shared python files 
+To run the assignment simply go to the Jupyter notebook and run all.
