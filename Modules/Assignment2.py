@@ -18,10 +18,13 @@ import pypsa
 import re
 import math
 import numpy as np
+from Assignment1 import country_data, line_capacities_mw
 
-BASE_DIR = Path.cwd()
-DATA_DIR = BASE_DIR.parent / "data"
-PLOTS_DIR = BASE_DIR.parent / "Plots"
+BASE_DIR = Path(__file__).resolve().parent
+PROJECT_DIR = BASE_DIR.parent
+
+DATA_DIR = PROJECT_DIR / "data"
+PLOTS_DIR = PROJECT_DIR / "Plots"
 PLOTS_DIR.mkdir(parents=True, exist_ok=True)
 
 GENERATION_FILE = DATA_DIR / "energy-charts_Total_net_electricity_generation_in_Germany_in_2024.csv"
@@ -843,3 +846,54 @@ else:
 
     print("Section g solved")
 
+# ============================================================
+# SECTION H - CO2 price for selected decarbonisation target
+# ============================================================
+
+target_share = 0.50  # 50% emissions cap relative to baseline
+
+# First solve the interconnected methane model without CO2 cap
+n_h_baseline = solve_part_g_case(
+    country_data=country_data,
+    line_capacities_mw=line_capacities_mw,
+    gas_pipeline_capacities_mw=gas_pipeline_capacities_mw,
+    co2_cap_tonnes=None,
+    solver_name=SOLVER,
+)
+
+baseline_methane = n_h_baseline.generators_t.p.filter(like="methane_supply").sum().sum()
+baseline_emissions_h = baseline_methane * methane_co2_t_per_mwh_th
+
+target_co2_cap = target_share * baseline_emissions_h
+
+# Solve again with the selected CO2 cap
+n_h = solve_part_g_case(
+    country_data=country_data,
+    line_capacities_mw=line_capacities_mw,
+    gas_pipeline_capacities_mw=gas_pipeline_capacities_mw,
+    co2_cap_tonnes=target_co2_cap,
+    solver_name=SOLVER,
+)
+
+co2_price_h = -float(n_h.global_constraints.at["co2_limit", "mu"])
+
+methane_h = n_h.generators_t.p.filter(like="methane_supply").sum().sum()
+emissions_h = methane_h * methane_co2_t_per_mwh_th
+
+print("\nSECTION H RESULTS")
+print("Baseline emissions [tCO2]:", baseline_emissions_h)
+print("Target CO2 cap share:", target_share)
+print("Target CO2 cap [tCO2]:", target_co2_cap)
+print("Actual emissions [tCO2]:", emissions_h)
+print("Model CO2 price [EUR/tCO2]:", co2_price_h)
+
+section_h_results = pd.DataFrame([{
+    "baseline_emissions_tco2": baseline_emissions_h,
+    "target_share": target_share,
+    "target_co2_cap_tco2": target_co2_cap,
+    "actual_emissions_tco2": emissions_h,
+    "model_co2_price_eur_per_tco2": co2_price_h,
+}])
+
+section_h_results.to_csv(PLOTS_DIR / "section_h_co2_price_interconnected_model.csv", index=False)
+print(section_h_results)
