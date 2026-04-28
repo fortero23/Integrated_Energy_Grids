@@ -975,8 +975,10 @@ plt.show()
 
 
 # DATA IMPORTS
+import json
 import re
 import math
+import time
 import requests
 import numpy as np
 import pandas as pd
@@ -985,6 +987,8 @@ import pypsa
 API_BASE = "https://api.energy-charts.info"
 START_2024 = "2024-01-01"
 END_2024 = "2024-12-31"
+CACHE_DIR = DATA_DIR / "energy_charts_cache"
+CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 COUNTRY_CODES = {
     "Germany": "de",
@@ -1018,16 +1022,61 @@ def slugify(text: str) -> str:
     return text
 
 
-def ec_get(endpoint: str, **params):
+def _cache_key(endpoint: str, **params) -> Path:
     """
-    energy charts API GET request helper function. 
-    It constructs the URL, sends a GET request with the provided parameters, 
-    checks for successful response, and returns the JSON data as a Python dictionary.
+    Build a deterministic cache filename for an API request.
     """
+    parts = [endpoint] + [f"{key}={params[key]}" for key in sorted(params)]
+    safe_name = "__".join(parts).replace("/", "_").replace(":", "_")
+    return CACHE_DIR / f"{safe_name}.json"
+
+
+def ec_get(endpoint: str, use_cache: bool = True, **params):
+    """
+    Energy Charts API GET request helper function with local caching and
+    retry/backoff on rate limiting.
+    """
+    cache_file = _cache_key(endpoint, **params)
+
+    if use_cache and cache_file.exists():
+        with open(cache_file, "r", encoding="utf-8") as file:
+            return json.load(file)
+
     url = f"{API_BASE}/{endpoint}"
-    response = requests.get(url, params=params, timeout=60)
-    response.raise_for_status()
-    return response.json()
+    max_retries = 6
+    base_wait_seconds = 5
+
+    for attempt in range(max_retries):
+        response = requests.get(url, params=params, timeout=60)
+
+        if response.status_code == 429:
+            retry_after = response.headers.get("Retry-After")
+            sleep_time = (
+                int(retry_after)
+                if retry_after is not None
+                else base_wait_seconds * (attempt + 1)
+            )
+            print(
+                f"Rate limited for {endpoint} with {params}. "
+                f"Retrying in {sleep_time}s..."
+            )
+            time.sleep(sleep_time)
+            continue
+
+        response.raise_for_status()
+        data = response.json()
+
+        if use_cache:
+            with open(cache_file, "w", encoding="utf-8") as file:
+                json.dump(data, file)
+
+        time.sleep(1.0)
+        return data
+
+    raise RuntimeError(
+        f"Failed to fetch Energy Charts endpoint '{endpoint}' "
+        f"after {max_retries} retries."
+    )
 
 
 def get_public_power_df(country_code: str, start=START_2024, end=END_2024) -> pd.DataFrame:

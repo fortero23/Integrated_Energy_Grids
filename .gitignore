@@ -1,1 +1,3 @@
 .vscode/
+Modules/__pycache__/
+data/energy_charts_cache/
