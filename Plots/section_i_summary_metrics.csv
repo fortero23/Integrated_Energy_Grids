@@ -1,6 +1,9 @@
 metric,value
-system_cost_eur,45107721734.89834
+system_cost_eur,62958798619.37939
 annual_electricity_demand_mwh,495541608.35
-annual_heat_demand_mwh,173439562.9225
-heat_pump_share_of_heat,0.9712998704536773
-gas_boiler_share_of_heat,0.028700129546322575
+annual_heat_demand_mwh,817375644.308878
+heat_pump_share_of_heat,0.09509566507439897
+gas_boiler_share_of_heat,0.9049043349256012
+heat_pump_cop_mean,2.729452438961187
+heat_pump_cop_min,2.0
+heat_pump_cop_max,4.241708699999999
